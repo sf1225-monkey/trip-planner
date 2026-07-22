@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trip Planner</title>
+  <title>Group Trip Planner</title>
   <link rel="manifest" href="./manifest.json" />
   <meta name="theme-color" content="#2563eb" />
 
-  <!-- Supabase JS Client -->
+  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
@@ -19,22 +19,23 @@
       --text: #0f172a;
       --text-muted: #64748b;
       --border: #e2e8f0;
+      --danger: #ef4444;
+      --success: #10b981;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
     body {
       background-color: var(--bg);
       color: var(--text);
-      padding-bottom: 70px; /* Space for bottom nav */
+      padding-bottom: 80px;
     }
 
-    /* Header & Navigation */
     header {
       background: var(--primary);
       color: white;
@@ -46,48 +47,16 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
-    nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: white;
-      display: flex;
-      justify-content: space-around;
-      padding: 12px 0;
-      border-top: 1px solid var(--border);
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-      z-index: 100;
-    }
-
-    nav button {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-
-    nav button.active {
-      color: var(--primary);
-    }
-
-    /* Layout & Cards */
     .container {
       max-width: 600px;
       margin: 0 auto;
       padding: 16px;
     }
 
+    /* Tab Sections */
     .page-section {
       display: none;
     }
-
     .page-section.active {
       display: block;
     }
@@ -101,25 +70,26 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
-    h2 { margin-bottom: 4px; font-size: 1.4rem; }
-    h3 { margin-bottom: 12px; font-size: 1.1rem; }
-    .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px; }
+    h2 { margin-bottom: 4px; font-size: 1.3rem; }
+    h3 { margin-bottom: 12px; font-size: 1.05rem; }
+    .subtitle { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 16px; }
 
-    /* Forms & Inputs */
+    /* Form Controls */
     .form-group { margin-bottom: 12px; }
     .form-row { display: flex; gap: 8px; margin-bottom: 12px; }
     .form-row > * { flex: 1; }
 
-    input, select {
+    input, select, textarea {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid var(--border);
       border-radius: 8px;
       font-size: 0.95rem;
       outline: none;
+      background: white;
     }
 
-    input:focus, select:focus {
+    input:focus, select:focus, textarea:focus {
       border-color: var(--primary);
     }
 
@@ -128,22 +98,82 @@
       background: var(--primary);
       color: white;
       border: none;
-      padding: 12px;
+      padding: 11px;
       border-radius: 8px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
     }
 
     .btn-primary:hover { background: var(--primary-dark); }
 
-    /* Tourist Spot Cards & Filter Styles */
+    .btn-delete {
+      background: none;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    /* Bottom Navigation */
+    nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+      z-index: 100;
+    }
+
+    nav button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+
+    nav button.active {
+      color: var(--primary);
+    }
+
+    /* Item Card Shared Layout */
+    .list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: white;
+    }
+
+    .list-item.completed {
+      opacity: 0.65;
+      background: #f8fafc;
+    }
+
+    .list-item.completed .item-title {
+      text-decoration: line-through;
+    }
+
+    /* Tourist Spot Badges & Filters */
     .filter-bar {
       display: flex;
       gap: 8px;
       overflow-x: auto;
       margin: 16px 0;
-      padding-bottom: 8px;
+      padding-bottom: 6px;
     }
 
     .filter-btn {
@@ -154,6 +184,7 @@
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
+      font-size: 0.85rem;
     }
 
     .filter-btn.active {
@@ -162,125 +193,174 @@
       border-color: var(--primary);
     }
 
-    .attraction-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 12px;
-      transition: all 0.2s ease;
-    }
-
-    .attraction-card.completed {
-      background-color: #f8fafc;
-      opacity: 0.75;
-    }
-
-    .attraction-card.completed .attraction-title {
-      text-decoration: line-through;
-      color: var(--text-muted);
-    }
-
-    .attraction-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
     .checkbox-container {
       display: flex;
       align-items: center;
       gap: 10px;
       cursor: pointer;
       font-weight: 600;
-      font-size: 1.05rem;
     }
 
     .checkbox-container input {
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
       cursor: pointer;
     }
 
     .badge {
-      font-size: 0.8rem;
-      padding: 4px 10px;
-      border-radius: 20px;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 12px;
       font-weight: 600;
-      background-color: #e2e8f0;
     }
 
-    .badge-food { background-color: #fef3c7; color: #92400e; }
     .badge-sightseeing { background-color: #dbeafe; color: #1e40af; }
+    .badge-food { background-color: #fef3c7; color: #92400e; }
     .badge-entertainment { background-color: #fce7f3; color: #9d174d; }
     .badge-shopping { background-color: #dcfce7; color: #166534; }
+    .badge-other { background-color: #e2e8f0; color: #475569; }
 
-    .attraction-body {
-      margin: 10px 0;
-      font-size: 0.9rem;
-    }
-
-    .attraction-body a {
-      color: var(--primary);
-      text-decoration: none;
-    }
-
-    .attraction-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #f1f5f9;
-    }
-
-    .status-tag { font-size: 0.8rem; font-weight: bold; }
-    .tag-done { color: #16a34a; }
+    .status-tag { font-size: 0.8rem; font-weight: 600; }
+    .tag-done { color: var(--success); }
     .tag-pending { color: #d97706; }
-
-    .btn-delete {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1rem;
-    }
 
     .empty-state {
       text-align: center;
       color: var(--text-muted);
       padding: 24px 0;
+      font-size: 0.9rem;
     }
   </style>
 </head>
 <body>
 
   <header>
-    <h1>✈️ Trip Planner</h1>
+    <h1>✈️ Group Trip Planner</h1>
   </header>
 
   <main class="container">
-    <!-- Itinerary Section (Placeholder) -->
+
+    <!-- 1. ITINERARY SECTION -->
     <section id="itinerary-page" class="page-section active">
-      <h2>📅 Daily Itinerary</h2>
-      <p class="subtitle">Organize your daily travel plans</p>
+      <h2>📅 Itinerary</h2>
+      <p class="subtitle">Plan activities day by day</p>
+
       <div class="card">
-        <p>Your itinerary items will appear here.</p>
+        <h3>Add Activity</h3>
+        <form onsubmit="addItineraryItem(event)">
+          <div class="form-row">
+            <input type="text" id="itin-day" placeholder="Day / Date (e.g., Day 1)" required />
+            <input type="time" id="itin-time" required />
+          </div>
+          <div class="form-group">
+            <input type="text" id="itin-title" placeholder="Activity name" required />
+          </div>
+          <button type="submit" class="btn-primary">+ Add Activity</button>
+        </form>
       </div>
+
+      <div id="itinerary-list"></div>
     </section>
 
-    <!-- Tourist Attractions Checklist Section -->
+    <!-- 2. FLIGHTS SECTION -->
+    <section id="flights-page" class="page-section">
+      <h2>✈️ Flight Details</h2>
+      <p class="subtitle">Store flight numbers, times, and gates</p>
+
+      <div class="card">
+        <h3>Add Flight</h3>
+        <form onsubmit="addFlight(event)">
+          <div class="form-row">
+            <input type="text" id="flight-num" placeholder="Flight # (e.g., AA123)" required />
+            <input type="text" id="flight-airline" placeholder="Airline" required />
+          </div>
+          <div class="form-row">
+            <input type="datetime-local" id="flight-dep" required />
+            <input type="datetime-local" id="flight-arr" required />
+          </div>
+          <button type="submit" class="btn-primary">+ Add Flight</button>
+        </form>
+      </div>
+
+      <div id="flights-list"></div>
+    </section>
+
+    <!-- 3. ACCOMMODATION SECTION -->
+    <section id="hotels-page" class="page-section">
+      <h2>🏨 Accommodation</h2>
+      <p class="subtitle">Hotel & Airbnb details</p>
+
+      <div class="card">
+        <h3>Add Stay</h3>
+        <form onsubmit="addHotel(event)">
+          <div class="form-group">
+            <input type="text" id="hotel-name" placeholder="Hotel / Stays Name" required />
+          </div>
+          <div class="form-group">
+            <input type="text" id="hotel-address" placeholder="Address" required />
+          </div>
+          <div class="form-row">
+            <input type="date" id="hotel-checkin" required />
+            <input type="date" id="hotel-checkout" required />
+          </div>
+          <button type="submit" class="btn-primary">+ Add Stay</button>
+        </form>
+      </div>
+
+      <div id="hotels-list"></div>
+    </section>
+
+    <!-- 4. EXPENSES SECTION -->
+    <section id="expenses-page" class="page-section">
+      <h2>💰 Expenses & Split</h2>
+      <p class="subtitle">Track who paid what</p>
+
+      <div class="card">
+        <h3>Add Expense</h3>
+        <form onsubmit="addExpense(event)">
+          <div class="form-group">
+            <input type="text" id="exp-title" placeholder="Description (e.g., Dinner)" required />
+          </div>
+          <div class="form-row">
+            <input type="number" step="0.01" id="exp-amount" placeholder="Amount ($)" required />
+            <input type="text" id="exp-payer" placeholder="Paid by (Name)" required />
+          </div>
+          <button type="submit" class="btn-primary">+ Add Expense</button>
+        </form>
+      </div>
+
+      <div id="expenses-list"></div>
+    </section>
+
+    <!-- 5. PACKING LIST SECTION -->
+    <section id="packing-page" class="page-section">
+      <h2>🧳 Packing List</h2>
+      <p class="subtitle">Group essentials checklist</p>
+
+      <div class="card">
+        <h3>Add Item</h3>
+        <form onsubmit="addPackingItem(event)">
+          <div class="form-group">
+            <input type="text" id="pack-item" placeholder="Item name (e.g., Universal Adapter)" required />
+          </div>
+          <button type="submit" class="btn-primary">+ Add Item</button>
+        </form>
+      </div>
+
+      <div id="packing-list"></div>
+    </section>
+
+    <!-- 6. TOURIST SPOTS CHECKLIST SECTION -->
     <section id="tourist-map-page" class="page-section">
       <h2>📍 Tourist Spots & Checklist</h2>
-      <p class="subtitle">Discover places, categorize them, and track what's added to the itinerary!</p>
+      <p class="subtitle">Discover places, categorize them, and track what's in the itinerary!</p>
 
-      <!-- Add New Attraction Form -->
       <div class="card">
         <h3>Add a New Spot</h3>
-        <form id="attraction-form" onsubmit="addAttraction(event)">
+        <form onsubmit="addAttraction(event)">
           <div class="form-group">
             <input type="text" id="attraction-name" placeholder="Place name (e.g., Tokyo Tower, Ichiran Ramen)" required />
           </div>
-          
           <div class="form-row">
             <select id="attraction-category" required>
               <option value="" disabled selected>Select Category</option>
@@ -290,15 +370,12 @@
               <option value="Shopping">🛍️ Shopping</option>
               <option value="Other">📍 Other</option>
             </select>
-            
-            <input type="text" id="attraction-location" placeholder="Address / Google Maps Link (optional)" />
+            <input type="text" id="attraction-location" placeholder="Map Link / Address (optional)" />
           </div>
-
           <button type="submit" class="btn-primary">+ Add Spot</button>
         </form>
       </div>
 
-      <!-- Category Filter Pills -->
       <div class="filter-bar">
         <button class="filter-btn active" onclick="filterAttractions('All')">All</button>
         <button class="filter-btn" onclick="filterAttractions('Sightseeing')">🏛️ Sightseeing</button>
@@ -307,201 +384,396 @@
         <button class="filter-btn" onclick="filterAttractions('Shopping')">🛍️ Shopping</button>
       </div>
 
-      <!-- Attractions Dynamic List -->
-      <div id="attractions-list">
-        <!-- Rendered items appear here -->
-      </div>
+      <div id="attractions-list"></div>
     </section>
+
   </main>
 
-  <!-- Bottom Navigation -->
+  <!-- Navigation Bar -->
   <nav>
     <button class="active" onclick="showPage('itinerary-page', this)">
-      <span>📅</span>
-      <span>Itinerary</span>
+      <span>📅</span><span>Itinerary</span>
+    </button>
+    <button onclick="showPage('flights-page', this)">
+      <span>✈️</span><span>Flights</span>
+    </button>
+    <button onclick="showPage('hotels-page', this)">
+      <span>🏨</span><span>Stays</span>
+    </button>
+    <button onclick="showPage('expenses-page', this)">
+      <span>💰</span><span>Expenses</span>
+    </button>
+    <button onclick="showPage('packing-page', this)">
+      <span>🧳</span><span>Packing</span>
     </button>
     <button onclick="showPage('tourist-map-page', this)">
-      <span>📍</span>
-      <span>Tourist Map</span>
+      <span>📍</span><span>Spots</span>
     </button>
   </nav>
 
   <script>
-    // --- 1. SUPABASE INITIALIZATION ---
-    // Replace with your actual Supabase credentials
-    const SUPABASE_URL = 'https://YOUR_SUPABASE_URL.supabase.co';
-    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-    
+    // --- 1. SUPABASE CONNECTION ---
+    // Fill in your credentials below:
+    const SUPABASE_URL = 'https://rquyokcjydixzmmjcfhv.supabase.co/rest/v1/';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxdXlva2NqeWRpeHptbWpjZmh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MzY3MjUsImV4cCI6MjEwMDMxMjcyNX0.p8A5qSfMDl53bBChB0v7YUroUIklZCtlM9swthbkfWg';
+
     let supabase = null;
-    if (SUPABASE_URL !== 'https://YOUR_SUPABASE_URL.supabase.co') {
+    if (SUPABASE_URL !== 'https://YOUR_PROJECT_ID.supabase.co') {
       supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     }
 
-    // --- 2. NAVIGATION LOGIC ---
+    // --- 2. GLOBAL STATE ---
+    let state = {
+      itinerary: [],
+      flights: [],
+      hotels: [],
+      expenses: [],
+      packing: [],
+      attractions: []
+    };
+
+    let currentCategoryFilter = 'All';
+
+    // --- 3. PAGE NAVIGATION ---
     function showPage(pageId, btnElement) {
-      document.querySelectorAll('.page-section').forEach(page => page.classList.remove('active'));
-      document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
-      
+      document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+
       document.getElementById(pageId).classList.add('active');
       if (btnElement) btnElement.classList.add('active');
     }
 
-    // --- 3. TOURIST SPOTS / ATTRACTIONS LOGIC ---
-    let attractions = [];
-    let currentFilter = 'All';
+    // --- 4. DATA SYNCING LOGIC ---
+    async function syncKey(key) {
+      if (!supabase) return;
+      const { error } = await supabase
+        .from('trip_data')
+        .upsert({ id: key, payload: state[key] });
 
-    async function addAttraction(event) {
-      event.preventDefault();
-
-      const nameInput = document.getElementById('attraction-name');
-      const categoryInput = document.getElementById('attraction-category');
-      const locationInput = document.getElementById('attraction-location');
-
-      const newSpot = {
-        id: Date.now().toString(),
-        name: nameInput.value.trim(),
-        category: categoryInput.value,
-        location: locationInput.value.trim(),
-        addedToItinerary: false,
-        createdAt: new Date().toISOString()
-      };
-
-      attractions.push(newSpot);
-
-      // Clear Form
-      nameInput.value = '';
-      categoryInput.value = '';
-      locationInput.value = '';
-
-      renderAttractions();
-      await syncAttractionsToSupabase();
+      if (error) console.error(`Error saving ${key}:`, error);
     }
 
-    async function toggleItineraryStatus(id) {
-      const spot = attractions.find(item => item.id === id);
+    function initRealtimeSync() {
+      if (!supabase) return;
+
+      const keys = ['itinerary', 'flights', 'hotels', 'expenses', 'packing', 'attractions'];
+
+      keys.forEach(key => {
+        // Initial Fetch
+        supabase.from('trip_data').select('payload').eq('id', key).single()
+          .then(({ data }) => {
+            if (data && data.payload) {
+              state[key] = data.payload;
+              renderAll();
+            }
+          });
+
+        // Realtime Listener
+        supabase.channel(`public:trip_data:${key}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_data', filter: `id=eq.${key}` }, (payload) => {
+            if (payload.new && payload.new.payload) {
+              state[key] = payload.new.payload;
+              renderAll();
+            }
+          }).subscribe();
+      });
+    }
+
+    // --- 5. ITINERARY FUNCTIONS ---
+    async function addItineraryItem(e) {
+      e.preventDefault();
+      const day = document.getElementById('itin-day').value;
+      const time = document.getElementById('itin-time').value;
+      const title = document.getElementById('itin-title').value;
+
+      state.itinerary.push({ id: Date.now().toString(), day, time, title });
+      e.target.reset();
+      renderItinerary();
+      await syncKey('itinerary');
+    }
+
+    async function deleteItineraryItem(id) {
+      state.itinerary = state.itinerary.filter(i => i.id !== id);
+      renderItinerary();
+      await syncKey('itinerary');
+    }
+
+    function renderItinerary() {
+      const el = document.getElementById('itinerary-list');
+      if (state.itinerary.length === 0) {
+        el.innerHTML = '<p class="empty-state">No activities scheduled yet.</p>';
+        return;
+      }
+      el.innerHTML = state.itinerary.map(i => `
+        <div class="list-item">
+          <div>
+            <strong>[${i.day} - ${i.time}]</strong> ${i.title}
+          </div>
+          <button class="btn-delete" onclick="deleteItineraryItem('${i.id}')">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    // --- 6. FLIGHT FUNCTIONS ---
+    async function addFlight(e) {
+      e.preventDefault();
+      const num = document.getElementById('flight-num').value;
+      const airline = document.getElementById('flight-airline').value;
+      const dep = document.getElementById('flight-dep').value;
+      const arr = document.getElementById('flight-arr').value;
+
+      state.flights.push({ id: Date.now().toString(), num, airline, dep, arr });
+      e.target.reset();
+      renderFlights();
+      await syncKey('flights');
+    }
+
+    async function deleteFlight(id) {
+      state.flights = state.flights.filter(f => f.id !== id);
+      renderFlights();
+      await syncKey('flights');
+    }
+
+    function renderFlights() {
+      const el = document.getElementById('flights-list');
+      if (state.flights.length === 0) {
+        el.innerHTML = '<p class="empty-state">No flight records added yet.</p>';
+        return;
+      }
+      el.innerHTML = state.flights.map(f => `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between;">
+            <strong>✈️ ${f.airline} (${f.num})</strong>
+            <button class="btn-delete" onclick="deleteFlight('${f.id}')">🗑️</button>
+          </div>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-top:6px;">
+            🛫 Dep: ${new Date(f.dep).toLocaleString()}<br>
+            🛬 Arr: ${new Date(f.arr).toLocaleString()}
+          </p>
+        </div>
+      `).join('');
+    }
+
+    // --- 7. HOTEL FUNCTIONS ---
+    async function addHotel(e) {
+      e.preventDefault();
+      const name = document.getElementById('hotel-name').value;
+      const address = document.getElementById('hotel-address').value;
+      const checkin = document.getElementById('hotel-checkin').value;
+      const checkout = document.getElementById('hotel-checkout').value;
+
+      state.hotels.push({ id: Date.now().toString(), name, address, checkin, checkout });
+      e.target.reset();
+      renderHotels();
+      await syncKey('hotels');
+    }
+
+    async function deleteHotel(id) {
+      state.hotels = state.hotels.filter(h => h.id !== id);
+      renderHotels();
+      await syncKey('hotels');
+    }
+
+    function renderHotels() {
+      const el = document.getElementById('hotels-list');
+      if (state.hotels.length === 0) {
+        el.innerHTML = '<p class="empty-state">No accommodation added yet.</p>';
+        return;
+      }
+      el.innerHTML = state.hotels.map(h => `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between;">
+            <strong>🏨 ${h.name}</strong>
+            <button class="btn-delete" onclick="deleteHotel('${h.id}')">🗑️</button>
+          </div>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0;">📍 ${h.address}</p>
+          <p style="font-size:0.85rem;">📅 ${h.checkin} to ${h.checkout}</p>
+        </div>
+      `).join('');
+    }
+
+    // --- 8. EXPENSE FUNCTIONS ---
+    async function addExpense(e) {
+      e.preventDefault();
+      const title = document.getElementById('exp-title').value;
+      const amount = parseFloat(document.getElementById('exp-amount').value);
+      const payer = document.getElementById('exp-payer').value;
+
+      state.expenses.push({ id: Date.now().toString(), title, amount, payer });
+      e.target.reset();
+      renderExpenses();
+      await syncKey('expenses');
+    }
+
+    async function deleteExpense(id) {
+      state.expenses = state.expenses.filter(x => x.id !== id);
+      renderExpenses();
+      await syncKey('expenses');
+    }
+
+    function renderExpenses() {
+      const el = document.getElementById('expenses-list');
+      if (state.expenses.length === 0) {
+        el.innerHTML = '<p class="empty-state">No expenses logged yet.</p>';
+        return;
+      }
+      const total = state.expenses.reduce((sum, x) => sum + x.amount, 0);
+      el.innerHTML = `
+        <div style="margin-bottom:12px; font-weight:bold;">Total Spent: $${total.toFixed(2)}</div>
+        ` + state.expenses.map(x => `
+        <div class="list-item">
+          <div>
+            <strong>${x.title}</strong> - $${x.amount.toFixed(2)}
+            <div style="font-size:0.8rem; color:var(--text-muted);">Paid by: ${x.payer}</div>
+          </div>
+          <button class="btn-delete" onclick="deleteExpense('${x.id}')">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    // --- 9. PACKING FUNCTIONS ---
+    async function addPackingItem(e) {
+      e.preventDefault();
+      const item = document.getElementById('pack-item').value;
+      state.packing.push({ id: Date.now().toString(), item, packed: false });
+      e.target.reset();
+      renderPacking();
+      await syncKey('packing');
+    }
+
+    async function togglePacking(id) {
+      const item = state.packing.find(p => p.id === id);
+      if (item) {
+        item.packed = !item.packed;
+        renderPacking();
+        await syncKey('packing');
+      }
+    }
+
+    async function deletePackingItem(id) {
+      state.packing = state.packing.filter(p => p.id !== id);
+      renderPacking();
+      await syncKey('packing');
+    }
+
+    function renderPacking() {
+      const el = document.getElementById('packing-list');
+      if (state.packing.length === 0) {
+        el.innerHTML = '<p class="empty-state">Packing list is empty.</p>';
+        return;
+      }
+      el.innerHTML = state.packing.map(p => `
+        <div class="list-item ${p.packed ? 'completed' : ''}">
+          <label class="checkbox-container">
+            <input type="checkbox" ${p.packed ? 'checked' : ''} onchange="togglePacking('${p.id}')">
+            <span class="item-title">${p.item}</span>
+          </label>
+          <button class="btn-delete" onclick="deletePackingItem('${p.id}')">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    // --- 10. TOURIST SPOTS FUNCTIONS ---
+    async function addAttraction(e) {
+      e.preventDefault();
+      const name = document.getElementById('attraction-name').value;
+      const category = document.getElementById('attraction-category').value;
+      const location = document.getElementById('attraction-location').value;
+
+      state.attractions.push({
+        id: Date.now().toString(),
+        name,
+        category,
+        location,
+        addedToItinerary: false
+      });
+
+      e.target.reset();
+      renderAttractions();
+      await syncKey('attractions');
+    }
+
+    async function toggleAttractionStatus(id) {
+      const spot = state.attractions.find(a => a.id === id);
       if (spot) {
         spot.addedToItinerary = !spot.addedToItinerary;
         renderAttractions();
-        await syncAttractionsToSupabase();
+        await syncKey('attractions');
       }
     }
 
     async function deleteAttraction(id) {
-      attractions = attractions.filter(item => item.id !== id);
+      state.attractions = state.attractions.filter(a => a.id !== id);
       renderAttractions();
-      await syncAttractionsToSupabase();
+      await syncKey('attractions');
     }
 
-    function filterAttractions(category) {
-      currentFilter = category;
+    function filterAttractions(cat) {
+      currentCategoryFilter = cat;
       document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.innerText.includes(category) || (category === 'All' && btn.innerText === 'All'));
+        btn.classList.toggle('active', btn.innerText.includes(cat) || (cat === 'All' && btn.innerText === 'All'));
       });
       renderAttractions();
     }
 
     function renderAttractions() {
-      const listContainer = document.getElementById('attractions-list');
-      listContainer.innerHTML = '';
-
-      const filtered = currentFilter === 'All' 
-        ? attractions 
-        : attractions.filter(item => item.category === currentFilter);
+      const el = document.getElementById('attractions-list');
+      const filtered = currentCategoryFilter === 'All' 
+        ? state.attractions 
+        : state.attractions.filter(a => a.category === currentCategoryFilter);
 
       if (filtered.length === 0) {
-        listContainer.innerHTML = `<p class="empty-state">No places found in this category yet. Add one above!</p>`;
+        el.innerHTML = '<p class="empty-state">No places found in this category.</p>';
         return;
       }
 
-      filtered.forEach(item => {
-        const card = document.createElement('div');
-        card.className = `attraction-card ${item.addedToItinerary ? 'completed' : ''}`;
-        
-        const categoryIcons = {
-          'Sightseeing': '🏛️',
-          'Food': '🍜',
-          'Entertainment': '🎟️',
-          'Shopping': '🛍️',
-          'Other': '📍'
-        };
+      const icons = { Sightseeing: '🏛️', Food: '🍜', Entertainment: '🎟️', Shopping: '🛍️', Other: '📍' };
 
-        card.innerHTML = `
-          <div class="attraction-header">
+      el.innerHTML = filtered.map(a => `
+        <div class="card ${a.addedToItinerary ? 'completed' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
             <label class="checkbox-container">
-              <input type="checkbox" ${item.addedToItinerary ? 'checked' : ''} onchange="toggleItineraryStatus('${item.id}')">
-              <span class="attraction-title">${item.name}</span>
+              <input type="checkbox" ${a.addedToItinerary ? 'checked' : ''} onchange="toggleAttractionStatus('${a.id}')">
+              <span class="item-title">${a.name}</span>
             </label>
-            <span class="badge badge-${item.category.toLowerCase()}">${categoryIcons[item.category] || '📍'} ${item.category}</span>
+            <span class="badge badge-${a.category.toLowerCase()}">${icons[a.category] || '📍'} ${a.category}</span>
           </div>
           
-          ${item.location ? `
-            <div class="attraction-body">
-              <a href="${item.location.startsWith('http') ? item.location : 'https://maps.google.com/?q=' + encodeURIComponent(item.location)}" target="_blank" rel="noopener">
-                📍 View Map / Location
-              </a>
-            </div>
+          ${a.location ? `
+            <p style="margin-top:8px; font-size:0.85rem;">
+              <a href="${a.location.startsWith('http') ? a.location : 'https://maps.google.com/?q=' + encodeURIComponent(a.location)}" target="_blank" style="color:var(--primary); text-decoration:none;">📍 View Location</a>
+            </p>
           ` : ''}
 
-          <div class="attraction-footer">
-            <span class="status-tag ${item.addedToItinerary ? 'tag-done' : 'tag-pending'}">
-              ${item.addedToItinerary ? '✓ In Itinerary' : '⏳ Not Scheduled Yet'}
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #f1f5f9;">
+            <span class="status-tag ${a.addedToItinerary ? 'tag-done' : 'tag-pending'}">
+              ${a.addedToItinerary ? '✓ In Itinerary' : '⏳ Not Scheduled Yet'}
             </span>
-            <button class="btn-delete" onclick="deleteAttraction('${item.id}')" title="Delete">🗑️</button>
+            <button class="btn-delete" onclick="deleteAttraction('${a.id}')">🗑️</button>
           </div>
-        `;
-
-        listContainer.appendChild(card);
-      });
+        </div>
+      `).join('');
     }
 
-    // --- 4. SUPABASE PERSISTENCE & REALTIME ---
-    async function syncAttractionsToSupabase() {
-      if (!supabase) return;
-
-      const { error } = await supabase
-        .from('trip_data')
-        .upsert({ id: 'tourist_attractions', payload: attractions });
-
-      if (error) console.error('Error saving attractions:', error);
-    }
-
-    function initRealtimeAttractions() {
-      if (!supabase) return;
-
-      // Initial Fetch
-      supabase
-        .from('trip_data')
-        .select('payload')
-        .eq('id', 'tourist_attractions')
-        .single()
-        .then(({ data }) => {
-          if (data && data.payload) {
-            attractions = data.payload;
-            renderAttractions();
-          }
-        });
-
-      // Listen for Live Updates from Other Devices
-      supabase
-        .channel('public:trip_data:attractions')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_data', filter: 'id=eq.tourist_attractions' }, (payload) => {
-          if (payload.new && payload.new.payload) {
-            attractions = payload.new.payload;
-            renderAttractions();
-          }
-        })
-        .subscribe();
-    }
-
-    // Service Worker Registration
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
-    }
-
-    // App Startup
-    window.addEventListener('DOMContentLoaded', () => {
+    // --- RENDER ALL ---
+    function renderAll() {
+      renderItinerary();
+      renderFlights();
+      renderHotels();
+      renderExpenses();
+      renderPacking();
       renderAttractions();
-      initRealtimeAttractions();
+    }
+
+    // --- SERVICE WORKER REGISTRATION ---
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW Registration failed:', err));
+    }
+
+    // --- INITIALIZE ---
+    window.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+      initRealtimeSync();
     });
   </script>
 </body>
