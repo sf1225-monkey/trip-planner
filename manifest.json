@@ -1,0 +1,21 @@
+{
+  "short_name": "TripPlanner",
+  "name": "Field Notes — Trip Planner",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#1B2A38",
+  "theme_color": "#1B2A38",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}
