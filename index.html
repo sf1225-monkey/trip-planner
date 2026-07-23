@@ -357,6 +357,18 @@
     <button data-tab="notes">Notes</button>
   </nav>
 
+<!-- Supabase JS Client Library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  // Replace these with your actual Supabase credentials
+  const SUPABASE_URL = 'https://rquyokcjydixzmmjcfhv.supabase.co/rest/v1/';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxdXlva2NqeWRpeHptbWpjZmh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MzY3MjUsImV4cCI6MjEwMDMxMjcyNX0.p8A5qSfMDl53bBChB0v7YUroUIklZCtlM9swthbkfWg';
+
+  // Make the supabase client available globally
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
+  
   <!-- MEMBERS -->
   <section class="panel active" id="panel-members">
     <div class="card-shell">
