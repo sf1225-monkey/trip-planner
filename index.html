@@ -4,17 +4,6 @@
 <meta charset="UTF-8">
 <title>Field Notes — Trip Planner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
-<!-- PWA Meta Tags & Manifest Link -->
-<meta name="theme-color" content="#1B2A38">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Trip Planner">
-<link rel="manifest" href="manifest.json">
-
-<!-- Supabase JS Client -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -364,7 +353,8 @@
     <button data-tab="stays">Accommodations</button>
     <button data-tab="expenses">Expenses</button>
     <button data-tab="days">Day Plans</button>
-    <button data-tab="map">Tourist Map</button>
+    <button data-tab="map">Tourist Checklist</button>
+    <button data-tab="notes">Notes</button>
   </nav>
 
   <!-- MEMBERS -->
@@ -508,7 +498,7 @@
     <div id="daysEmpty" class="empty-note">No days added yet.</div>
   </section>
 
-  <!-- TOURIST MAP / CHECKLIST -->
+  <!-- TOURIST CHECKLIST -->
   <section class="panel" id="panel-map">
     <div class="card-shell">
       <h2 class="section-title">Add a spot</h2>
@@ -541,21 +531,20 @@
     </div>
   </section>
 
+  <!-- SCRATCH NOTES -->
+  <section class="panel" id="panel-notes">
+    <div class="card-shell">
+      <h2 class="section-title">Scratch notes</h2>
+      <p class="section-sub">Anything that doesn't fit elsewhere — loose ideas, reminders, things to look up. Shared with everyone on the trip.</p>
+      <textarea id="scratchNotes" rows="14" placeholder="Jot anything down here…" style="width:100%; font-family:'IBM Plex Sans', sans-serif; font-size:14px; line-height:1.5; resize:vertical;"></textarea>
+      <div id="notesSavedTag" class="option-meta" style="margin-top:6px;"></div>
+    </div>
+  </section>
+
   <p class="status" id="status"></p>
 </div>
 
 <script>
-/* ---------- SUPABASE & PWA SETUP ---------- */
-const SUPABASE_URL = 'https://rquyokcjydixzmmjcfhv.supabase.co/rest/v1/';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxdXlva2NqeWRpeHptbWpjZmh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MzY3MjUsImV4cCI6MjEwMDMxMjcyNX0.p8A5qSfMDl53bBChB0v7YUroUIklZCtlM9swthbkfWg';
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(err => console.error('SW registration failed:', err));
-  });
-}
-
 const statusEl = document.getElementById('status');
 const titleEl = document.getElementById('tripTitle');
 const whoTag = document.getElementById('whoTag');
@@ -563,10 +552,6 @@ const whoTag = document.getElementById('whoTag');
 let me = { name: '', email: '' };
 let members = [];
 let flights = { outbound: [], return: [] };
-let stays = [];
-let expenses = [];
-let days = [];
-let checklist = [];
 
 function escapeHtml(str){
   const d = document.createElement('div');
@@ -577,66 +562,6 @@ function fmtDate(ts){
   return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 }
 function flash(msg){ statusEl.textContent = msg; setTimeout(()=>{ if(statusEl.textContent===msg) statusEl.textContent=''; }, 3000); }
-
-/* ---------- SUPABASE DATA STORAGE WRAPPER ---------- */
-const db = {
-  async get(key) {
-    try {
-      const { data, error } = await _supabase.from('trip_data').select('value').eq('key', key).maybeSingle();
-      if (error) throw error;
-      return data ? data.value : null;
-    } catch(e) {
-      console.error('Supabase Get Error:', e);
-      return null;
-    }
-  },
-  async set(key, value) {
-    try {
-      const { error } = await _supabase.from('trip_data').upsert({ key, value });
-      if (error) throw error;
-      return true;
-    } catch(e) {
-      console.error('Supabase Set Error:', e);
-      return false;
-    }
-  }
-};
-
-/* ---------- REALTIME SYNC LISTENER ---------- */
-function initRealtimeSync() {
-  _supabase
-    .channel('public:trip_data')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_data' }, payload => {
-      if (!payload.new) return;
-      const { key, value } = payload.new;
-      
-      if (key === 'trip:title') {
-        if (value) titleEl.value = value;
-      } else if (key === 'members:list') {
-        members = value ? JSON.parse(value) : [];
-        renderMembers();
-      } else if (key === 'flights:outbound') {
-        flights.outbound = value ? JSON.parse(value) : [];
-        renderFlights('outbound');
-      } else if (key === 'flights:return') {
-        flights.return = value ? JSON.parse(value) : [];
-        renderFlights('return');
-      } else if (key === 'stays:list') {
-        stays = value ? JSON.parse(value) : [];
-        renderStays();
-      } else if (key === 'expenses:list') {
-        expenses = value ? JSON.parse(value) : [];
-        renderExpenses();
-      } else if (key === 'days:list') {
-        days = value ? JSON.parse(value) : [];
-        renderDays();
-      } else if (key === 'checklist:list') {
-        checklist = value ? JSON.parse(value) : [];
-        renderChecklist();
-      }
-    })
-    .subscribe();
-}
 
 /* ---------- TABS ---------- */
 document.querySelectorAll('nav.tabs button').forEach(btn=>{
@@ -650,17 +575,17 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 
 /* ---------- TITLE ---------- */
 async function loadTitle(){
-  try{ const val = await db.get('trip:title'); if(val) titleEl.value = val; }catch(e){}
+  try{ const r = await window.storage.get('trip:title', true); if(r && r.value) titleEl.value = r.value; }catch(e){}
 }
 titleEl.addEventListener('change', async ()=>{
-  try{ await db.set('trip:title', titleEl.value); }catch(e){ flash('Could not save trip title.'); }
+  try{ await window.storage.set('trip:title', titleEl.value, true); }catch(e){ flash('Could not save trip title.'); }
 });
 
 /* ---------- IDENTITY ---------- */
 async function loadIdentity(){
   try{
-    const val = localStorage.getItem('identity:member');
-    if(val){ me = JSON.parse(val); }
+    const r = await window.storage.get('identity:member', false);
+    if(r && r.value){ me = JSON.parse(r.value); }
   }catch(e){}
   updateWhoTag();
   document.getElementById('memberName').value = me.name || '';
@@ -673,13 +598,13 @@ function updateWhoTag(){
 /* ---------- MEMBERS ---------- */
 async function loadMembers(){
   try{
-    const val = await db.get('members:list');
-    members = val ? JSON.parse(val) : [];
+    const r = await window.storage.get('members:list', true);
+    members = r && r.value ? JSON.parse(r.value) : [];
   }catch(e){ members = []; }
   renderMembers();
 }
 async function saveMembers(){
-  try{ const res = await db.set('members:list', JSON.stringify(members)); if(!res) flash('Could not save members.'); }
+  try{ const res = await window.storage.set('members:list', JSON.stringify(members), true); if(!res) flash('Could not save members.'); }
   catch(e){ flash('Could not save members.'); }
 }
 function renderMembers(){
@@ -702,7 +627,7 @@ document.getElementById('joinBtn').addEventListener('click', async ()=>{
   if(!name || !email){ flash('Enter a name and email first.'); return; }
   if(!/^\S+@\S+\.\S+$/.test(email)){ flash('That email doesn\'t look right.'); return; }
   me = { name, email };
-  try{ localStorage.setItem('identity:member', JSON.stringify(me)); }catch(e){}
+  try{ await window.storage.set('identity:member', JSON.stringify(me), false); }catch(e){}
   updateWhoTag();
   const existingIdx = members.findIndex(m => m.email.toLowerCase() === email.toLowerCase());
   if(existingIdx >= 0){ members[existingIdx].name = name; }
@@ -718,8 +643,8 @@ function directionKey(dir){ return dir === 'outbound' ? 'flights:outbound' : 'fl
 async function loadFlights(){
   for(const dir of ['outbound','return']){
     try{
-      const val = await db.get(directionKey(dir));
-      flights[dir] = val ? JSON.parse(val) : [];
+      const r = await window.storage.get(directionKey(dir), true);
+      flights[dir] = r && r.value ? JSON.parse(r.value) : [];
     }catch(e){ flights[dir] = []; }
   }
   renderFlights('outbound');
@@ -727,7 +652,7 @@ async function loadFlights(){
 }
 async function saveFlights(dir){
   try{
-    const res = await db.set(directionKey(dir), JSON.stringify(flights[dir]));
+    const res = await window.storage.set(directionKey(dir), JSON.stringify(flights[dir]), true);
     if(!res) flash('Could not save flight data.');
   }catch(e){ flash('Could not save flight data.'); }
 }
@@ -909,6 +834,8 @@ function boardingPassHtml(o, dir){
 }
 
 /* ---------- ACCOMMODATIONS ---------- */
+let stays = [];
+
 function normalizeUrl(u){
   if(!u) return '';
   return /^https?:\/\//i.test(u) ? u : 'https://' + u;
@@ -916,14 +843,14 @@ function normalizeUrl(u){
 
 async function loadStays(){
   try{
-    const val = await db.get('stays:list');
-    stays = val ? JSON.parse(val) : [];
+    const r = await window.storage.get('stays:list', true);
+    stays = r && r.value ? JSON.parse(r.value) : [];
   }catch(e){ stays = []; }
   renderStays();
 }
 async function saveStays(){
   try{
-    const res = await db.set('stays:list', JSON.stringify(stays));
+    const res = await window.storage.set('stays:list', JSON.stringify(stays), true);
     if(!res) flash('Could not save accommodations.');
   }catch(e){ flash('Could not save accommodations.'); }
 }
@@ -985,6 +912,8 @@ document.getElementById('stayAddBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- EXPENSES ---------- */
+let expenses = [];
+
 function renderExpenseMemberPickers(){
   const paidBySel = document.getElementById('exp-paidby');
   const currentPaidBy = paidBySel.value;
@@ -1066,14 +995,14 @@ function updateExpenseRemainder(){
 
 async function loadExpenses(){
   try{
-    const val = await db.get('expenses:list');
-    expenses = val ? JSON.parse(val) : [];
+    const r = await window.storage.get('expenses:list', true);
+    expenses = r && r.value ? JSON.parse(r.value) : [];
   }catch(e){ expenses = []; }
   renderExpenses();
 }
 async function saveExpenses(){
   try{
-    const res = await db.set('expenses:list', JSON.stringify(expenses));
+    const res = await window.storage.set('expenses:list', JSON.stringify(expenses), true);
     if(!res) flash('Could not save expenses.');
   }catch(e){ flash('Could not save expenses.'); }
 }
@@ -1160,6 +1089,7 @@ function renderBalances(){
     </div>
   `).join('');
 
+  // Greedy settlement: match biggest creditor with biggest debtor
   const creditors = entries.filter(([,b]) => b > 0.005).map(([email,b]) => ({email, amt:b})).sort((a,b)=>b.amt-a.amt);
   const debtors = entries.filter(([,b]) => b < -0.005).map(([email,b]) => ({email, amt:-b})).sort((a,b)=>b.amt-a.amt);
   const transfers = [];
@@ -1224,16 +1154,18 @@ document.getElementById('expAddBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- DAY PLANS ---------- */
+let days = [];
+
 async function loadDays(){
   try{
-    const val = await db.get('days:list');
-    days = val ? JSON.parse(val) : [];
+    const r = await window.storage.get('days:list', true);
+    days = r && r.value ? JSON.parse(r.value) : [];
   }catch(e){ days = []; }
   renderDays();
 }
 async function saveDays(){
   try{
-    const res = await db.set('days:list', JSON.stringify(days));
+    const res = await window.storage.set('days:list', JSON.stringify(days), true);
     if(!res) flash('Could not save day plans.');
   }catch(e){ flash('Could not save day plans.'); }
 }
@@ -1350,6 +1282,8 @@ document.getElementById('addDayBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- TOURIST CHECKLIST ---------- */
+let checklist = [];
+
 const CL_CAT_LABEL = {
   sightseeing: 'Sightseeing',
   food: 'Food',
@@ -1360,14 +1294,14 @@ const CL_CAT_LABEL = {
 
 async function loadChecklist(){
   try{
-    const val = await db.get('checklist:list');
-    checklist = val ? JSON.parse(val) : [];
+    const r = await window.storage.get('checklist:list', true);
+    checklist = r && r.value ? JSON.parse(r.value) : [];
   }catch(e){ checklist = []; }
   renderChecklist();
 }
 async function saveChecklist(){
   try{
-    const res = await db.set('checklist:list', JSON.stringify(checklist));
+    const res = await window.storage.set('checklist:list', JSON.stringify(checklist), true);
     if(!res) flash('Could not save the checklist.');
   }catch(e){ flash('Could not save the checklist.'); }
 }
@@ -1425,7 +1359,37 @@ document.getElementById('clAddBtn').addEventListener('click', async ()=>{
   flash('Added to the checklist.');
 });
 
-/* ---------- INITIALIZATION ---------- */
+/* ---------- SCRATCH NOTES ---------- */
+let notesSaveTimer = null;
+const notesTextarea = document.getElementById('scratchNotes');
+const notesSavedTag = document.getElementById('notesSavedTag');
+
+async function loadNotes(){
+  try{
+    const r = await window.storage.get('notes:scratch', true);
+    if(r && r.value){
+      const data = JSON.parse(r.value);
+      notesTextarea.value = data.text || '';
+      if(data.editedBy) notesSavedTag.textContent = `Last edited by ${data.editedBy} · ${fmtDate(data.ts)}`;
+    }
+  }catch(e){ /* nothing saved yet */ }
+}
+
+notesTextarea.addEventListener('input', ()=>{
+  clearTimeout(notesSaveTimer);
+  notesSaveTimer = setTimeout(saveNotes, 800);
+});
+
+async function saveNotes(){
+  const payload = { text: notesTextarea.value, editedBy: me.name || 'someone', ts: Date.now() };
+  try{
+    const res = await window.storage.set('notes:scratch', JSON.stringify(payload), true);
+    if(res){ notesSavedTag.textContent = `Last edited by ${payload.editedBy} · ${fmtDate(payload.ts)}`; }
+    else{ flash('Could not save notes.'); }
+  }catch(e){ flash('Could not save notes.'); }
+}
+
+/* ---------- INIT ---------- */
 (async function init(){
   await loadIdentity();
   await loadTitle();
@@ -1435,7 +1399,7 @@ document.getElementById('clAddBtn').addEventListener('click', async ()=>{
   await loadExpenses();
   await loadDays();
   await loadChecklist();
-  initRealtimeSync();
+  await loadNotes();
 })();
 </script>
 </body>
