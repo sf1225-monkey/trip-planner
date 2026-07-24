@@ -132,7 +132,7 @@
 
   /* MEMBERS */
   .member-row{
-    display:flex; justify-content:space-between; align-items:center;
+    display:flex; justify-space-between; align-items:center;
     padding:9px 0; border-bottom:1px solid rgba(43,36,32,0.1);
     font-size:13.5px;
   }
@@ -510,6 +510,7 @@
     </div>
     <div id="daysEmpty" class="empty-note">No days added yet.</div>
   </section>
+
   <section class="panel" id="panel-map">
     <div class="card-shell">
       <h2 class="section-title">Add a spot</h2>
@@ -558,7 +559,7 @@
 /* ---------- SUPABASE INITIALIZATION ---------- */
 const SUPABASE_URL = 'https://rquyokcjydixzmmjcfhv.supabase.co/rest/v1/';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxdXlva2NqeWRpeHptbWpjZmh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3MzY3MjUsImV4cCI6MjEwMDMxMjcyNX0.p8A5qSfMDl53bBChB0v7YUroUIklZCtlM9swthbkfWg';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 /* ---------- SERVICE WORKER / PWA REGISTER ---------- */
 if ('serviceWorker' in navigator) {
@@ -576,18 +577,21 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register(swUrl).catch(err => console.error('PWA SW Register error:', err));
 }
 
-/* ---------- STORAGE LAYER USING SUPABASE ---------- */
+/* ---------- STORAGE LAYER USING SUPABASE / LOCALSTORAGE ---------- */
 window.storage = {
   async get(key) {
+    if (!supabase) return { value: localStorage.getItem(key) };
     const { data, error } = await supabase
       .from('app_state')
       .select('value')
       .eq('key', key)
       .single();
     if (error && error.code !== 'PGRST116') console.error('Supabase get error:', error);
-    return data ? { value: data.value } : null;
+    return data ? { value: data.value } : { value: localStorage.getItem(key) };
   },
   async set(key, value) {
+    localStorage.setItem(key, value);
+    if (!supabase) return true;
     const { error } = await supabase
       .from('app_state')
       .upsert({ key, value });
@@ -606,6 +610,10 @@ const whoTag = document.getElementById('whoTag');
 let me = { name: '', email: '' };
 let members = [];
 let flights = { outbound: [], return: [] };
+let stays = [];
+let expenses = [];
+let days = [];
+let checklist = [];
 
 function escapeHtml(str){
   const d = document.createElement('div');
@@ -700,9 +708,9 @@ async function loadFlights(){
       const r = await window.storage.get(directionKey(dir));
       flights[dir] = r && r.value ? JSON.parse(r.value) : [];
     }catch(e){ flights[dir] = []; }
+    renderAddForm(dir);
+    renderFlights(dir);
   }
-  renderFlights('outbound');
-  renderFlights('return');
 }
 async function saveFlights(dir){
   try{
@@ -730,718 +738,254 @@ function renderAddForm(dir){
       <div class="field"><label class="field-label">Depart time</label><input type="time" id="fl-${dir}-depart"></div>
       <div class="field"><label class="field-label">Arrive time</label><input type="time" id="fl-${dir}-arrive"></div>
     </div>
-    <div class="field"><label class="field-label">Notes</label><textarea id="fl-${dir}-notes" placeholder="Layover, baggage, seat notes…" rows="2"></textarea></div>
-    <div class="field">
-      <label class="field-label">Screenshot (optional, under 3MB)</label>
-      <input type="file" id="fl-${dir}-screenshot" accept="image/*">
-    </div>
-    <button class="btn" id="fl-${dir}-add">Add option</button>
+    <button class="btn" onclick="addFlightOption('${dir}')">Add option</button>
   `;
-  document.getElementById(`fl-${dir}-add`).addEventListener('click', ()=> addOption(dir));
 }
 
-function fileToDataUrl(file){
-  return new Promise((resolve, reject)=>{
-    if(file.size > 3 * 1024 * 1024){ reject(new Error('too big')); return; }
-    const reader = new FileReader();
-    reader.onload = ()=> resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+function addFlightOption(dir){
+  const airline = document.getElementById(`fl-${dir}-airline`).value.trim();
+  const flightno = document.getElementById(`fl-${dir}-flightno`).value.trim();
+  const from = document.getElementById(`fl-${dir}-from`).value.trim();
+  const to = document.getElementById(`fl-${dir}-to`).value.trim();
+  const date = document.getElementById(`fl-${dir}-date`).value;
+  const price = document.getElementById(`fl-${dir}-price`).value.trim();
+  const depart = document.getElementById(`fl-${dir}-depart`).value;
+  const arrive = document.getElementById(`fl-${dir}-arrive`).value;
 
-async function addOption(dir){
-  const g = id => document.getElementById(`fl-${dir}-${id}`);
-  const airline = g('airline').value.trim();
-  const flightNo = g('flightno').value.trim();
-  const from = g('from').value.trim().toUpperCase();
-  const to = g('to').value.trim().toUpperCase();
-  const date = g('date').value;
-  const price = g('price').value.trim();
-  const depart = g('depart').value;
-  const arrive = g('arrive').value;
-  const notes = g('notes').value.trim();
-  if(!airline && !flightNo && !from && !to){ flash('Add at least an airline or flight number.'); return; }
+  if(!airline || !from || !to){ flash('Please enter airline and route information.'); return; }
 
-  let screenshot = '';
-  const file = g('screenshot').files[0];
-  if(file){
-    try{ screenshot = await fileToDataUrl(file); }
-    catch(e){ flash('Screenshot too large — try one under 3MB.'); return; }
-  }
-
-  const option = {
-    id: 'f'+Date.now()+Math.random().toString(36).slice(2,7),
-    airline, flightNo, from, to, date, price, depart, arrive, notes, screenshot,
-    addedBy: me.name || 'someone', ts: Date.now(),
-    votes: {}, confirmed: false
-  };
-  flights[dir].push(option);
+  flights[dir].push({ id: Date.now().toString(), airline, flightno, from, to, date, price, depart, arrive, votes: [] });
+  saveFlights(dir);
   renderFlights(dir);
-  await saveFlights(dir);
-  flash('Option added.');
+  renderAddForm(dir);
+  flash('Flight option added.');
 }
 
 function renderFlights(dir){
-  const confirmedHolder = document.getElementById('confirmed-'+dir);
   const optionsHolder = document.getElementById('options-'+dir);
-  const confirmed = flights[dir].find(o => o.confirmed);
-  const options = flights[dir].filter(o => !o.confirmed);
-
-  confirmedHolder.innerHTML = confirmed ? boardingPassHtml(confirmed, dir) : '';
-  if(confirmed){
-    const undoBtn = confirmedHolder.querySelector('[data-action="unconfirm"]');
-    if(undoBtn) undoBtn.addEventListener('click', async ()=>{
-      confirmed.confirmed = false;
-      renderFlights(dir);
-      await saveFlights(dir);
-    });
+  if(flights[dir].length === 0){
+    optionsHolder.innerHTML = '<div class="empty-note">No flight options added yet.</div>';
+    return;
   }
-
-  if(options.length === 0){
-    optionsHolder.innerHTML = confirmed ? '' : '<div class="empty-note">No options yet — add one below.</div>';
-  }else{
-    optionsHolder.innerHTML = options.map(o => optionCardHtml(o, dir)).join('');
-    options.forEach(o=>{
-      const card = optionsHolder.querySelector(`[data-id="${o.id}"]`);
-      card.querySelector('[data-action="vote"]').addEventListener('click', async ()=>{
-        if(!me.email){ flash('Join with your name and email first.'); return; }
-        if(o.votes[me.email]) delete o.votes[me.email];
-        else o.votes[me.email] = me.name;
-        renderFlights(dir);
-        await saveFlights(dir);
-      });
-      card.querySelector('[data-action="confirm"]').addEventListener('click', async ()=>{
-        flights[dir].forEach(x => x.confirmed = false);
-        o.confirmed = true;
-        renderFlights(dir);
-        await saveFlights(dir);
-      });
-      card.querySelector('[data-action="remove"]').addEventListener('click', async ()=>{
-        flights[dir] = flights[dir].filter(x => x.id !== o.id);
-        renderFlights(dir);
-        await saveFlights(dir);
-      });
-    });
-  }
-  renderAddForm(dir);
-}
-
-function optionCardHtml(o, dir){
-  const voteCount = Object.keys(o.votes).length;
-  const voted = me.email && o.votes[me.email];
-  const voterNames = Object.values(o.votes).join(', ');
-  return `
-    <div class="option-card" data-id="${o.id}">
+  optionsHolder.innerHTML = flights[dir].map(f => `
+    <div class="option-card">
       <div class="option-top">
-        <div>
-          <div class="option-title">${escapeHtml(o.airline || 'Unnamed airline')} ${o.flightNo ? '· '+escapeHtml(o.flightNo) : ''}</div>
-          <div class="option-meta">${escapeHtml(o.from)} → ${escapeHtml(o.to)} ${o.date ? '· '+escapeHtml(o.date) : ''} ${o.depart ? '· dep '+escapeHtml(o.depart) : ''} ${o.arrive ? '· arr '+escapeHtml(o.arrive) : ''}</div>
-          <div class="option-meta">${o.price ? escapeHtml(o.price) : ''}</div>
-        </div>
+        <div class="option-title">${escapeHtml(f.airline)} (${escapeHtml(f.flightno)})</div>
+        <div class="option-title">${escapeHtml(f.price)}</div>
       </div>
-      ${o.notes ? `<div class="option-notes">${escapeHtml(o.notes)}</div>` : ''}
-      ${o.screenshot ? `<img class="screenshot" src="${o.screenshot}" alt="Flight screenshot">` : ''}
+      <div class="option-meta">${escapeHtml(f.from)} → ${escapeHtml(f.to)} | ${f.date || 'TBD'} | ${f.depart || ''} - ${f.arrive || ''}</div>
       <div class="vote-row">
-        <div>
-          <div class="vote-count">${voteCount} vote${voteCount===1?'':'s'}</div>
-          ${voterNames ? `<div class="voters">${escapeHtml(voterNames)}</div>` : ''}
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn small ${voted ? 'sage' : 'ghost'}" data-action="vote">${voted ? 'Voted ✓' : 'Vote'}</button>
-          <button class="btn small" data-action="confirm">Confirm</button>
-          <button class="btn small ghost" data-action="remove">Remove</button>
-        </div>
+        <button class="btn small ghost" onclick="voteFlight('${dir}', '${f.id}')">Vote</button>
+        <span class="vote-count">${(f.votes || []).length} Votes</span>
       </div>
     </div>
-  `;
+  `).join('');
 }
 
-function boardingPassHtml(o, dir){
-  return `
-    <div class="boarding-pass">
-      <div class="bp-main">
-        <div class="bp-eyebrow">${dir === 'outbound' ? 'Outbound · Confirmed' : 'Return · Confirmed'}</div>
-        <div class="bp-route">
-          <span class="bp-airport">${escapeHtml(o.from) || '???'}</span>
-          <span class="bp-arrow">✈ →</span>
-          <span class="bp-airport">${escapeHtml(o.to) || '???'}</span>
-        </div>
-        <div class="bp-grid">
-          <div><div class="bp-field-label">Airline</div><div class="bp-field-value">${escapeHtml(o.airline) || '—'}</div></div>
-          <div><div class="bp-field-label">Date</div><div class="bp-field-value">${escapeHtml(o.date) || '—'}</div></div>
-          <div><div class="bp-field-label">Price</div><div class="bp-field-value">${escapeHtml(o.price) || '—'}</div></div>
-          <div><div class="bp-field-label">Depart</div><div class="bp-field-value">${escapeHtml(o.depart) || '—'}</div></div>
-          <div><div class="bp-field-label">Arrive</div><div class="bp-field-value">${escapeHtml(o.arrive) || '—'}</div></div>
-          <div><div class="bp-field-label">Flight</div><div class="bp-field-value">${escapeHtml(o.flightNo) || '—'}</div></div>
-        </div>
-        <div class="bp-barcode"></div>
-        <div style="margin-top:8px;"><button class="btn small ghost" data-action="unconfirm">Unconfirm</button></div>
-      </div>
-      <div class="bp-stub">
-        <div class="bp-eyebrow" style="color:var(--brass);">Boarding</div>
-        <div class="stub-airport">${escapeHtml(o.from)}→${escapeHtml(o.to)}</div>
-        <div class="flight-no">${escapeHtml(o.flightNo) || '—'}</div>
-      </div>
-    </div>
-  `;
+function voteFlight(dir, id){
+  if(!me.email){ flash('Please join the trip first to vote.'); return; }
+  const flight = flights[dir].find(f => f.id === id);
+  if(flight){
+    if(!flight.votes) flight.votes = [];
+    const idx = flight.votes.indexOf(me.email);
+    if(idx >= 0) flight.votes.splice(idx, 1);
+    else flight.votes.push(me.email);
+    saveFlights(dir);
+    renderFlights(dir);
+  }
 }
 
-/* ---------- ACCOMMODATIONS ---------- */
-let stays = [];
-
-function normalizeUrl(u){
-  if(!u) return '';
-  return /^https?:\/\//i.test(u) ? u : 'https://' + u;
-}
-
+/* ---------- STAYS / ACCOMMODATIONS ---------- */
 async function loadStays(){
-  try{
-    const r = await window.storage.get('stays:list');
-    stays = r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ stays = []; }
+  try{ const r = await window.storage.get('trip:stays'); stays = r && r.value ? JSON.parse(r.value) : []; }catch(e){}
   renderStays();
 }
 async function saveStays(){
-  try{
-    const res = await window.storage.set('stays:list', JSON.stringify(stays));
-    if(!res) flash('Could not save accommodations.');
-  }catch(e){ flash('Could not save accommodations.'); }
+  try{ await window.storage.set('trip:stays', JSON.stringify(stays)); }catch(e){}
 }
-
 function renderStays(){
-  const body = document.getElementById('staysBody');
-  if(stays.length === 0){
-    body.innerHTML = `<tr><td colspan="6"><div class="empty-note" style="border:none; padding:24px 0;">No places added yet.</div></td></tr>`;
-    return;
-  }
-  body.innerHTML = stays.map(s => `
-    <tr data-id="${s.id}">
-      <td data-label="Listing">${s.link ? `<a class="stay-link" href="${escapeHtml(normalizeUrl(s.link))}" target="_blank" rel="noopener">View listing</a>` : '—'}</td>
-      <td data-label="Map">${s.map ? `<a class="map-link" href="${escapeHtml(normalizeUrl(s.map))}" target="_blank" rel="noopener">Open map</a>` : '—'}</td>
-      <td data-label="Price" class="price-cell">${escapeHtml(s.price) || '—'}</td>
-      <td data-label="Private room" class="center"><input type="checkbox" class="private-check" data-action="toggle-private" ${s.private ? 'checked' : ''}></td>
-      <td data-label="Notes" class="notes-cell">${escapeHtml(s.notes) || '—'}</td>
-      <td data-label=""><button class="remove-stay" data-action="remove" title="Remove">✕</button></td>
+  const tbody = document.getElementById('staysBody');
+  if(!tbody) return;
+  tbody.innerHTML = stays.map((s, idx) => `
+    <tr>
+      <td data-label="Listing"><a class="stay-link" href="${escapeHtml(s.link)}" target="_blank">Link</a></td>
+      <td data-label="Map">${s.map ? `<a class="map-link" href="${escapeHtml(s.map)}" target="_blank">Map</a>` : '-'}</td>
+      <td data-label="Price" class="price-cell">${escapeHtml(s.price)}</td>
+      <td data-label="Private room" class="center">${s.isPrivate ? '✓' : '✗'}</td>
+      <td data-label="Notes" class="notes-cell">${escapeHtml(s.notes)}</td>
+      <td class="center"><button class="remove-stay" onclick="removeStay(${idx})">✕</button></td>
     </tr>
   `).join('');
-
-  body.querySelectorAll('[data-action="toggle-private"]').forEach(cb=>{
-    cb.addEventListener('change', async (ev)=>{
-      const id = ev.target.closest('tr').dataset.id;
-      const s = stays.find(x => x.id === id);
-      if(s){ s.private = ev.target.checked; await saveStays(); }
-    });
-  });
-  body.querySelectorAll('[data-action="remove"]').forEach(btn=>{
-    btn.addEventListener('click', async (ev)=>{
-      const id = ev.target.closest('tr').dataset.id;
-      stays = stays.filter(x => x.id !== id);
-      renderStays();
-      await saveStays();
-    });
-  });
 }
-
-document.getElementById('stayAddBtn').addEventListener('click', async ()=>{
+function removeStay(idx){ stays.splice(idx,1); saveStays(); renderStays(); }
+document.getElementById('stayAddBtn')?.addEventListener('click', ()=>{
   const link = document.getElementById('stay-link').value.trim();
   const map = document.getElementById('stay-map').value.trim();
   const price = document.getElementById('stay-price').value.trim();
-  const priv = document.getElementById('stay-private').checked;
+  const isPrivate = document.getElementById('stay-private').checked;
   const notes = document.getElementById('stay-notes').value.trim();
-  if(!link && !map && !price){ flash('Add at least a link, map, or price.'); return; }
-  stays.push({
-    id: 's'+Date.now()+Math.random().toString(36).slice(2,7),
-    link, map, price, private: priv, notes,
-    addedBy: me.name || 'someone', ts: Date.now()
-  });
+  if(!link){ flash('Please enter a listing link.'); return; }
+  stays.push({ link, map, price, isPrivate, notes });
+  saveStays(); renderStays();
   document.getElementById('stay-link').value = '';
   document.getElementById('stay-map').value = '';
   document.getElementById('stay-price').value = '';
-  document.getElementById('stay-private').checked = false;
   document.getElementById('stay-notes').value = '';
-  renderStays();
-  await saveStays();
-  flash('Added to the table.');
 });
 
 /* ---------- EXPENSES ---------- */
-let expenses = [];
-
 function renderExpenseMemberPickers(){
-  const paidBySel = document.getElementById('exp-paidby');
-  const currentPaidBy = paidBySel.value;
-  if(members.length === 0){
-    paidBySel.innerHTML = '<option value="">Join the trip first</option>';
-  }else{
-    paidBySel.innerHTML = members.map(m => `<option value="${escapeHtml(m.email)}">${escapeHtml(m.name)}</option>`).join('');
-    if(currentPaidBy) paidBySel.value = currentPaidBy;
-    else if(me.email) paidBySel.value = me.email;
-  }
-
-  const involvedHolder = document.getElementById('exp-involved');
-  const prevChecked = new Set(Array.from(involvedHolder.querySelectorAll('.inv-check:checked')).map(i => i.dataset.email));
-  const prevAmounts = {};
-  involvedHolder.querySelectorAll('.inv-amount').forEach(i => { prevAmounts[i.dataset.email] = i.value; });
-  const hadState = involvedHolder.querySelectorAll('.inv-check').length > 0;
-  const splitEven = document.getElementById('exp-split-even').checked;
-
-  if(members.length === 0){
-    involvedHolder.innerHTML = '<span class="option-meta">No members yet — add people on the Members tab.</span>';
-    return;
-  }
-
-  involvedHolder.innerHTML = members.map(m => {
-    const checked = hadState ? prevChecked.has(m.email) : true;
-    const amt = prevAmounts[m.email] || '';
-    return `
-      <div class="split-row" style="display:flex; align-items:center; gap:8px;" data-email="${escapeHtml(m.email)}">
-        <label class="check-chip" style="flex:1;">
-          <input type="checkbox" class="inv-check" data-email="${escapeHtml(m.email)}" ${checked ? 'checked' : ''}>
-          ${escapeHtml(m.name)}
-        </label>
-        <input type="text" class="inv-amount" data-email="${escapeHtml(m.email)}" placeholder="0.00"
-          value="${escapeHtml(amt)}"
-          style="width:80px; display:${splitEven ? 'none' : 'block'}; ${checked ? '' : 'visibility:hidden;'}">
-      </div>
-    `;
-  }).join('');
-
-  involvedHolder.querySelectorAll('.inv-check').forEach(cb=>{
-    cb.addEventListener('change', ()=>{
-      const row = involvedHolder.querySelector(`.inv-amount[data-email="${cb.dataset.email}"]`);
-      if(row) row.style.visibility = cb.checked ? 'visible' : 'hidden';
-      updateExpenseRemainder();
-    });
-  });
-  involvedHolder.querySelectorAll('.inv-amount').forEach(inp=>{
-    inp.addEventListener('input', updateExpenseRemainder);
-  });
-  updateExpenseRemainder();
-}
-
-document.getElementById('exp-split-even').addEventListener('change', ()=>{
-  const splitEven = document.getElementById('exp-split-even').checked;
-  document.querySelectorAll('#exp-involved .inv-amount').forEach(inp=>{
-    inp.style.display = splitEven ? 'none' : 'block';
-  });
-  updateExpenseRemainder();
-});
-document.getElementById('exp-amount').addEventListener('input', updateExpenseRemainder);
-
-function updateExpenseRemainder(){
-  const remainderEl = document.getElementById('exp-remainder');
-  const splitEven = document.getElementById('exp-split-even').checked;
-  const total = Number(document.getElementById('exp-amount').value.trim());
-  if(splitEven){ remainderEl.textContent = ''; return; }
-  const checked = Array.from(document.querySelectorAll('#exp-involved .inv-check:checked'));
-  if(checked.length === 0 || isNaN(total)){ remainderEl.textContent = ''; return; }
-  let assigned = 0;
-  checked.forEach(cb=>{
-    const inp = document.querySelector(`.inv-amount[data-email="${cb.dataset.email}"]`);
-    assigned += Number(inp.value) || 0;
-  });
-  const remaining = total - assigned;
-  remainderEl.textContent = Math.abs(remaining) < 0.005
-    ? 'Assigned in full ✓'
-    : `Assigned ${assigned.toFixed(2)} of ${total.toFixed(2)} — ${remaining > 0 ? remaining.toFixed(2)+' left to assign' : Math.abs(remaining).toFixed(2)+' over'}`;
+  const paidSelect = document.getElementById('exp-paidby');
+  const invDiv = document.getElementById('exp-involved');
+  if(!paidSelect || !invDiv) return;
+  paidSelect.innerHTML = members.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
+  invDiv.innerHTML = members.map(m => `
+    <label class="check-chip">
+      <input type="checkbox" class="exp-member-chk" value="${escapeHtml(m.name)}" checked> ${escapeHtml(m.name)}
+    </label>
+  `).join('');
 }
 
 async function loadExpenses(){
-  try{
-    const r = await window.storage.get('expenses:list');
-    expenses = r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ expenses = []; }
+  try{ const r = await window.storage.get('trip:expenses'); expenses = r && r.value ? JSON.parse(r.value) : []; }catch(e){}
   renderExpenses();
 }
 async function saveExpenses(){
-  try{
-    const res = await window.storage.set('expenses:list', JSON.stringify(expenses));
-    if(!res) flash('Could not save expenses.');
-  }catch(e){ flash('Could not save expenses.'); }
+  try{ await window.storage.set('trip:expenses', JSON.stringify(expenses)); }catch(e){}
 }
-
-function memberName(email){
-  const m = members.find(x => x.email === email);
-  return m ? m.name : email;
-}
-
 function renderExpenses(){
-  const el = document.getElementById('expenseList');
-  if(expenses.length === 0){
-    el.innerHTML = '<div class="empty-note">No expenses logged yet.</div>';
-  }else{
-    const sorted = [...expenses].sort((a,b) => b.ts - a.ts);
-    el.innerHTML = sorted.map(e => {
-      const names = Object.keys(e.shares);
-      const splitDesc = e.even
-        ? `split evenly ${names.length} way${names.length===1?'':'s'} (${names.map(memberName).join(', ')})`
-        : `split unevenly (${names.map(n => `${escapeHtml(memberName(n))} ${formatAmount(e.shares[n])}`).join(', ')})`;
-      return `
-      <div class="expense-row" data-id="${e.id}">
-        <div>
-          <div class="expense-desc">${escapeHtml(e.desc || 'Untitled')} <span class="option-meta">· ${escapeHtml(e.category)}</span></div>
-          <div class="expense-meta">Paid by ${escapeHtml(memberName(e.paidBy))} · ${splitDesc}</div>
-        </div>
-        <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-          <div class="expense-amount">${formatAmount(e.amount)}</div>
-          <button class="btn small ghost" data-action="remove-expense">Remove</button>
-        </div>
+  const list = document.getElementById('expenseList');
+  if(!list) return;
+  if(expenses.length === 0){ list.innerHTML = '<div class="empty-note">No expenses logged yet.</div>'; return; }
+  list.innerHTML = expenses.map(e => `
+    <div class="expense-row">
+      <div>
+        <div class="expense-desc">${escapeHtml(e.desc)} (${escapeHtml(e.cat)})</div>
+        <div class="expense-meta">Paid by ${escapeHtml(e.paidBy)} | Split: ${e.split.map(s => escapeHtml(s)).join(', ')}</div>
       </div>
-    `;
-    }).join('');
-    el.querySelectorAll('[data-action="remove-expense"]').forEach(btn=>{
-      btn.addEventListener('click', async (ev)=>{
-        const id = ev.target.closest('.expense-row').dataset.id;
-        expenses = expenses.filter(x => x.id !== id);
-        renderExpenses();
-        renderBalances();
-        await saveExpenses();
-      });
-    });
-  }
-  renderBalances();
-}
-
-function formatAmount(n){
-  const num = Number(n);
-  return isNaN(num) ? escapeHtml(String(n)) : num.toFixed(2);
-}
-
-function computeBalances(){
-  const balances = {};
-  members.forEach(m => { balances[m.email] = 0; });
-  expenses.forEach(e => {
-    const amount = Number(e.amount);
-    if(isNaN(amount) || !e.shares) return;
-    Object.entries(e.shares).forEach(([email, share]) => {
-      if(!(email in balances)) balances[email] = 0;
-      balances[email] -= Number(share) || 0;
-    });
-    if(!(e.paidBy in balances)) balances[e.paidBy] = 0;
-    balances[e.paidBy] += amount;
-  });
-  return balances;
-}
-
-function renderBalances(){
-  const balances = computeBalances();
-  const summaryEl = document.getElementById('balanceSummary');
-  const planEl = document.getElementById('settlementPlan');
-  const entries = Object.entries(balances).filter(([email]) => members.some(m => m.email === email));
-
-  if(entries.length === 0){
-    summaryEl.innerHTML = '<div class="empty-note">Add members and expenses to see balances.</div>';
-    planEl.innerHTML = '';
-    return;
-  }
-
-  summaryEl.innerHTML = entries.map(([email, bal]) => `
-    <div class="balance-row">
-      <span>${escapeHtml(memberName(email))}</span>
-      <span class="${bal >= 0.005 ? 'pos' : (bal <= -0.005 ? 'neg' : '')}">${bal >= 0.005 ? '+' : ''}${bal.toFixed(2)}</span>
+      <div class="expense-amount">£${parseFloat(e.amount).toFixed(2)}</div>
     </div>
   `).join('');
-
-  const creditors = entries.filter(([,b]) => b > 0.005).map(([email,b]) => ({email, amt:b})).sort((a,b)=>b.amt-a.amt);
-  const debtors = entries.filter(([,b]) => b < -0.005).map(([email,b]) => ({email, amt:-b})).sort((a,b)=>b.amt-a.amt);
-  const transfers = [];
-  let ci = 0, di = 0;
-  while(ci < creditors.length && di < debtors.length){
-    const c = creditors[ci], d = debtors[di];
-    const amt = Math.min(c.amt, d.amt);
-    if(amt > 0.005) transfers.push({ from: d.email, to: c.email, amt });
-    c.amt -= amt; d.amt -= amt;
-    if(c.amt <= 0.005) ci++;
-    if(d.amt <= 0.005) di++;
-  }
-
-  planEl.innerHTML = transfers.length === 0
-    ? '<div class="empty-note">Everyone is settled up.</div>'
-    : transfers.map(t => `<div class="settle-line">${escapeHtml(memberName(t.from))} owes ${escapeHtml(memberName(t.to))} <strong>${t.amt.toFixed(2)}</strong></div>`).join('');
 }
-
-document.getElementById('expAddBtn').addEventListener('click', async ()=>{
+document.getElementById('expAddBtn')?.addEventListener('click', ()=>{
   const desc = document.getElementById('exp-desc').value.trim();
-  const category = document.getElementById('exp-cat').value;
-  const amountRaw = document.getElementById('exp-amount').value.trim();
+  const cat = document.getElementById('exp-cat').value;
+  const amount = document.getElementById('exp-amount').value.trim();
   const paidBy = document.getElementById('exp-paidby').value;
-  const splitEven = document.getElementById('exp-split-even').checked;
-  const checkedRows = Array.from(document.querySelectorAll('#exp-involved .inv-check:checked'));
+  const split = Array.from(document.querySelectorAll('.exp-member-chk:checked')).map(c => c.value);
 
-  const amount = Number(amountRaw);
-  if(!paidBy){ flash('Add members before logging expenses.'); return; }
-  if(!amountRaw || isNaN(amount) || amount <= 0){ flash('Enter a valid amount.'); return; }
-  if(checkedRows.length === 0){ flash('Pick at least one person to split with.'); return; }
-
-  let shares = {};
-  if(splitEven){
-    const share = amount / checkedRows.length;
-    checkedRows.forEach(cb => { shares[cb.dataset.email] = share; });
-  }else{
-    let sum = 0;
-    let valid = true;
-    checkedRows.forEach(cb=>{
-      const inp = document.querySelector(`.inv-amount[data-email="${cb.dataset.email}"]`);
-      const v = Number(inp.value);
-      if(inp.value.trim() === '' || isNaN(v) || v < 0) valid = false;
-      shares[cb.dataset.email] = v;
-      sum += v;
-    });
-    if(!valid){ flash('Fill in an amount for everyone included.'); return; }
-    if(Math.abs(sum - amount) > 0.01){ flash(`Shares add up to ${sum.toFixed(2)}, not ${amount.toFixed(2)}.`); return; }
-  }
-
-  expenses.push({
-    id: 'x'+Date.now()+Math.random().toString(36).slice(2,7),
-    desc, category, amount, paidBy, shares, even: splitEven,
-    addedBy: me.name || 'someone', ts: Date.now()
-  });
+  if(!desc || !amount || isNaN(amount)){ flash('Enter a valid description and numeric amount.'); return; }
+  expenses.push({ id: Date.now().toString(), desc, cat, amount: parseFloat(amount), paidBy, split });
+  saveExpenses(); renderExpenses();
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-amount').value = '';
-  document.querySelectorAll('#exp-involved .inv-amount').forEach(i => i.value = '');
-  updateExpenseRemainder();
-  renderExpenses();
-  await saveExpenses();
-  flash('Expense logged.');
 });
 
 /* ---------- DAY PLANS ---------- */
-let days = [];
-
 async function loadDays(){
-  try{
-    const r = await window.storage.get('days:list');
-    days = r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ days = []; }
+  try{ const r = await window.storage.get('trip:days'); days = r && r.value ? JSON.parse(r.value) : []; }catch(e){}
   renderDays();
 }
 async function saveDays(){
-  try{
-    const res = await window.storage.set('days:list', JSON.stringify(days));
-    if(!res) flash('Could not save day plans.');
-  }catch(e){ flash('Could not save day plans.'); }
+  try{ await window.storage.set('trip:days', JSON.stringify(days)); }catch(e){}
 }
-
-function addEventFormHtml(dayId){
-  return `
-    <div class="add-event-form">
-      <input type="text" placeholder="Add a spot or plan…" id="new-event-${dayId}">
-      <button class="btn small" data-add-event="${dayId}">Add</button>
-    </div>
-  `;
-}
-
-function dayRowsHtml(day){
-  const dayCellHtml = `
-    <td class="day-cell" rowspan="${Math.max(day.events.length,1)}">
-      <input type="text" class="day-label-input" data-day="${day.id}" value="${escapeHtml(day.label)}">
-      <button class="remove-day" data-day="${day.id}">remove day</button>
-    </td>
-  `;
-  if(day.events.length === 0){
-    return `<tr data-day="${day.id}">${dayCellHtml}<td colspan="2">${addEventFormHtml(day.id)}</td></tr>`;
-  }
-  const eventRows = day.events.map((ev, i) => {
-    const optedIn = me.email && ev.optIns.includes(me.email);
-    const namesText = ev.optIns.map(memberName).join(', ') || 'No one yet';
-    return `
-      <tr data-day="${day.id}" data-event="${ev.id}">
-        ${i === 0 ? dayCellHtml : ''}
-        <td>
-          <div class="event-row">
-            <div class="event-text">${escapeHtml(ev.text)}</div>
-            <button class="remove-event" data-day="${day.id}" data-event="${ev.id}">✕</button>
-          </div>
-          ${i === day.events.length - 1 ? addEventFormHtml(day.id) : ''}
-        </td>
-        <td>
-          <div class="optin-names">${escapeHtml(namesText)}</div>
-          <button class="optin-btn ${optedIn ? 'joined' : ''}" data-day="${day.id}" data-event="${ev.id}">${optedIn ? "You're in ✓" : "I'm in"}</button>
-        </td>
-      </tr>
-    `;
-  });
-  return eventRows.join('');
-}
-
 function renderDays(){
   const tbody = document.getElementById('daysTableBody');
-  const emptyEl = document.getElementById('daysEmpty');
-  if(days.length === 0){
-    tbody.innerHTML = '';
-    emptyEl.style.display = 'block';
-    return;
-  }
-  emptyEl.style.display = 'none';
-  tbody.innerHTML = days.map(dayRowsHtml).join('');
+  const empty = document.getElementById('daysEmpty');
+  if(!tbody) return;
+  if(days.length === 0){ tbody.innerHTML = ''; if(empty) empty.style.display = 'block'; return; }
+  if(empty) empty.style.display = 'none';
 
-  tbody.querySelectorAll('.day-label-input').forEach(inp=>{
-    inp.addEventListener('change', async ()=>{
-      const day = days.find(d => d.id === inp.dataset.day);
-      if(day){ day.label = inp.value.trim() || day.label; await saveDays(); }
-    });
-  });
-  tbody.querySelectorAll('.remove-day').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      days = days.filter(d => d.id !== btn.dataset.day);
-      renderDays();
-      await saveDays();
-    });
-  });
-  tbody.querySelectorAll('.remove-event').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const day = days.find(d => d.id === btn.dataset.day);
-      if(day){ day.events = day.events.filter(e => e.id !== btn.dataset.event); }
-      renderDays();
-      await saveDays();
-    });
-  });
-  tbody.querySelectorAll('.optin-btn').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if(!me.email){ flash('Join with your name and email first.'); return; }
-      const day = days.find(d => d.id === btn.dataset.day);
-      const ev = day && day.events.find(e => e.id === btn.dataset.event);
-      if(!ev) return;
-      const idx = ev.optIns.indexOf(me.email);
-      if(idx >= 0) ev.optIns.splice(idx, 1);
-      else ev.optIns.push(me.email);
-      renderDays();
-      await saveDays();
-    });
-  });
-  tbody.querySelectorAll('[data-add-event]').forEach(btn=>{
-    const dayId = btn.dataset.addEvent;
-    const doAdd = async ()=>{
-      const input = document.getElementById('new-event-'+dayId);
-      const text = input.value.trim();
-      if(!text) return;
-      const day = days.find(d => d.id === dayId);
-      if(!day) return;
-      day.events.push({ id: 'ev'+Date.now()+Math.random().toString(36).slice(2,7), text, optIns: [] });
-      renderDays();
-      await saveDays();
-    };
-    btn.addEventListener('click', doAdd);
-    const input = document.getElementById('new-event-'+dayId);
-    if(input) input.addEventListener('keydown', (ev)=>{ if(ev.key === 'Enter') doAdd(); });
-  });
+  tbody.innerHTML = days.map((d, dIdx) => `
+    <tr>
+      <td class="day-cell">
+        <input class="day-label-input" value="${escapeHtml(d.title)}" onchange="updateDayTitle(${dIdx}, this.value)">
+        <button class="remove-day" onclick="removeDay(${dIdx})">Delete Day</button>
+      </td>
+      <td>
+        ${(d.events || []).map((ev, eIdx) => `
+          <div class="event-row">
+            <span class="event-text">${escapeHtml(ev.text)}</span>
+            <button class="remove-event" onclick="removeEvent(${dIdx}, ${eIdx})">✕</button>
+          </div>
+        `).join('')}
+        <div class="add-event-form">
+          <input type="text" id="add-ev-${dIdx}" placeholder="Add activity…">
+          <button class="btn small" onclick="addEvent(${dIdx})">Add</button>
+        </div>
+      </td>
+      <td>-</td>
+    </tr>
+  `).join('');
+}
+document.getElementById('addDayBtn')?.addEventListener('click', ()=>{
+  days.push({ title: `Day ${days.length + 1}`, events: [] });
+  saveDays(); renderDays();
+});
+function removeDay(idx){ days.splice(idx, 1); saveDays(); renderDays(); }
+function updateDayTitle(idx, val){ days[idx].title = val; saveDays(); }
+function addEvent(dIdx){
+  const inp = document.getElementById(`add-ev-${dIdx}`);
+  if(!inp || !inp.value.trim()) return;
+  if(!days[dIdx].events) days[dIdx].events = [];
+  days[dIdx].events.push({ text: inp.value.trim() });
+  saveDays(); renderDays();
+}
+function removeEvent(dIdx, eIdx){
+  days[dIdx].events.splice(eIdx, 1); saveDays(); renderDays();
 }
 
-document.getElementById('addDayBtn').addEventListener('click', async ()=>{
-  days.push({ id: 'd'+Date.now()+Math.random().toString(36).slice(2,7), label: `Day ${days.length+1}`, events: [] });
-  renderDays();
-  await saveDays();
-});
-
-/* ---------- TOURIST CHECKLIST ---------- */
-let checklist = [];
-
-const CL_CAT_LABEL = {
-  sightseeing: 'Sightseeing',
-  food: 'Food',
-  entertainment: 'Entertainment',
-  shopping: 'Shopping',
-  other: 'Other'
-};
-
+/* ---------- CHECKLIST ---------- */
 async function loadChecklist(){
-  try{
-    const r = await window.storage.get('checklist:list');
-    checklist = r && r.value ? JSON.parse(r.value) : [];
-  }catch(e){ checklist = []; }
+  try{ const r = await window.storage.get('trip:checklist'); checklist = r && r.value ? JSON.parse(r.value) : []; }catch(e){}
   renderChecklist();
 }
 async function saveChecklist(){
-  try{
-    const res = await window.storage.set('checklist:list', JSON.stringify(checklist));
-    if(!res) flash('Could not save the checklist.');
-  }catch(e){ flash('Could not save the checklist.'); }
+  try{ await window.storage.set('trip:checklist', JSON.stringify(checklist)); }catch(e){}
 }
-
 function renderChecklist(){
-  const body = document.getElementById('checklistTableBody');
-  const emptyEl = document.getElementById('checklistEmpty');
-  if(checklist.length === 0){
-    body.innerHTML = '';
-    emptyEl.style.display = 'block';
-    return;
-  }
-  emptyEl.style.display = 'none';
-  body.innerHTML = checklist.map(item => `
-    <tr data-id="${item.id}" class="${item.checked ? 'checked' : ''}">
-      <td><input type="checkbox" data-action="toggle" ${item.checked ? 'checked' : ''}></td>
+  const tbody = document.getElementById('checklistTableBody');
+  const empty = document.getElementById('checklistEmpty');
+  if(!tbody) return;
+  if(checklist.length === 0){ tbody.innerHTML = ''; if(empty) empty.style.display = 'block'; return; }
+  if(empty) empty.style.display = 'none';
+
+  tbody.innerHTML = checklist.map((item, idx) => `
+    <tr class="${item.done ? 'checked' : ''}">
+      <td><input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem(${idx})"></td>
       <td class="item-name">${escapeHtml(item.name)}</td>
-      <td class="map-link-cell">${item.map ? `<a href="${escapeHtml(normalizeUrl(item.map))}" target="_blank" rel="noopener">Open map</a>` : '—'}</td>
-      <td><span class="cat-badge ${item.category}">${escapeHtml(CL_CAT_LABEL[item.category] || item.category)}</span></td>
-      <td><button class="remove-stay" data-action="remove" title="Remove">✕</button></td>
+      <td class="map-link-cell">${item.map ? `<a href="${escapeHtml(item.map)}" target="_blank">Map</a>` : '-'}</td>
+      <td><span class="cat-badge ${escapeHtml(item.cat)}">${escapeHtml(item.cat)}</span></td>
+      <td><button class="remove-stay" onclick="removeChecklistItem(${idx})">✕</button></td>
     </tr>
   `).join('');
-
-  body.querySelectorAll('[data-action="toggle"]').forEach(cb=>{
-    cb.addEventListener('change', async (ev)=>{
-      const id = ev.target.closest('tr').dataset.id;
-      const item = checklist.find(x => x.id === id);
-      if(item){ item.checked = ev.target.checked; renderChecklist(); await saveChecklist(); }
-    });
-  });
-  body.querySelectorAll('[data-action="remove"]').forEach(btn=>{
-    btn.addEventListener('click', async (ev)=>{
-      const id = ev.target.closest('tr').dataset.id;
-      checklist = checklist.filter(x => x.id !== id);
-      renderChecklist();
-      await saveChecklist();
-    });
-  });
 }
-
-document.getElementById('clAddBtn').addEventListener('click', async ()=>{
+document.getElementById('clAddBtn')?.addEventListener('click', ()=>{
   const name = document.getElementById('cl-name').value.trim();
-  const category = document.getElementById('cl-cat').value;
+  const cat = document.getElementById('cl-cat').value;
   const map = document.getElementById('cl-map').value.trim();
-  if(!name){ flash('Give it a name first.'); return; }
-  checklist.push({
-    id: 'cl'+Date.now()+Math.random().toString(36).slice(2,7),
-    name, category, map, checked: false,
-    addedBy: me.name || 'someone', ts: Date.now()
-  });
+  if(!name){ flash('Enter a spot name.'); return; }
+  checklist.push({ name, cat, map, done: false });
+  saveChecklist(); renderChecklist();
   document.getElementById('cl-name').value = '';
   document.getElementById('cl-map').value = '';
-  renderChecklist();
-  await saveChecklist();
-  flash('Added to the checklist.');
 });
+function toggleChecklistItem(idx){ checklist[idx].done = !checklist[idx].done; saveChecklist(); renderChecklist(); }
+function removeChecklistItem(idx){ checklist.splice(idx, 1); saveChecklist(); renderChecklist(); }
 
-/* ---------- SCRATCH NOTES ---------- */
-let notesSaveTimer = null;
-const notesTextarea = document.getElementById('scratchNotes');
-const notesSavedTag = document.getElementById('notesSavedTag');
-
+/* ---------- NOTES ---------- */
+const scratchNotes = document.getElementById('scratchNotes');
 async function loadNotes(){
-  try{
-    const r = await window.storage.get('notes:scratch');
-    if(r && r.value){
-      const data = JSON.parse(r.value);
-      notesTextarea.value = data.text || '';
-      if(data.editedBy) notesSavedTag.textContent = `Last edited by ${data.editedBy} · ${fmtDate(data.ts)}`;
-    }
-  }catch(e){ /* nothing saved yet */ }
+  try{ const r = await window.storage.get('trip:notes'); if(r && r.value) scratchNotes.value = r.value; }catch(e){}
 }
-
-notesTextarea.addEventListener('input', ()=>{
-  clearTimeout(notesSaveTimer);
-  notesSaveTimer = setTimeout(saveNotes, 800);
+scratchNotes?.addEventListener('input', async ()=>{
+  try{
+    await window.storage.set('trip:notes', scratchNotes.value);
+    document.getElementById('notesSavedTag').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+  }catch(e){}
 });
 
-async function saveNotes(){
-  const payload = { text: notesTextarea.value, editedBy: me.name || 'someone', ts: Date.now() };
-  try{
-    const res = await window.storage.set('notes:scratch', JSON.stringify(payload));
-    if(res){ notesSavedTag.textContent = `Last edited by ${payload.editedBy} · ${fmtDate(payload.ts)}`; }
-    else{ flash('Could not save notes.'); }
-  }catch(e){ flash('Could not save notes.'); }
-}
-
+/* ---------- INITIAL LOAD ---------- */
 (async function init(){
   await loadIdentity();
   await loadTitle();
